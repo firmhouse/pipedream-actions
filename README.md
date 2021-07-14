@@ -10,6 +10,8 @@ First, install the [Pipedream CLI](https://pipedream.com/docs/cli/install) to co
 curl https://cli.pipedream.com/install | sh
 ```
 
+Then run pd login to craete your Pipedream config file.
+
 ## Usage
 
 More information on how to create actions through the CLI can be found [here](https://pipedream.com/docs/components/quickstart/nodejs/actions). But it comes down to creating a new directory in this repository, for example:
@@ -30,9 +32,22 @@ module.exports = {
 }
 ```
 
-To publish to Pipedream, cd into your action's folder and run `pd publish` with your filename.
+## Publishing your action
+
+To publish to Pipedream, you need to create a firmhouse profile so that the action ends up under the proper workspace.
+Open your ~/.config/pipedream file and add the following:
+
+```bash
+[firmhouse]
+api_key = [firmhouse api_key here]
+org_id = [firmhouse org_id here]
+```
+
+You can find this API key and org_id if you go to [settings](https://pipedream.com/settings/account) and switch to the Firmhouse workspace.
+
+After this, you can `cd` into your action's folder and run `pd publish` with your filename and profile name. For example:
 
 ```bash
 cd ./hello-world
-pd publish action.js
+pd publish action.js -p firmhouse
 ```
