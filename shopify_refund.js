@@ -5,7 +5,7 @@ module.exports = {
   description:
     "This action uses the Firmhouse API to refund a payment based on a cancelled or refunded Shopify order",
   key: "shopify_refund",
-  version: "0.0.18",
+  version: "0.0.19",
   type: "action",
   props: {
     body: {
@@ -60,7 +60,7 @@ module.exports = {
 
     const findOrderedProduct = (shopifyVariantId) => {
       return order.subscription.orderedProducts.find(
-        (o) => o.shopifyVariantId == shopifyVariantId
+        (o) => o.product.shopifyVariantId == shopifyVariantId
       );
     };
 
@@ -81,10 +81,10 @@ module.exports = {
       const newQuantity = orderedProduct.quantity - refundLineItem.quantity;
 
       if (newQuantity > 0) {
-        console.log(`Updating quantity for ${orderedProduct}`);
+        console.log(`Updating quantity for ${orderedProduct.id}`);
         console.log(`Set quantity ${newQuantity}`);
       } else {
-        console.log(`Removing ordered product ${orderedProduct}`);
+        console.log(`Removing ordered product ${orderedProduct.id}`);
       }
 
       refundAmount +=
@@ -92,7 +92,7 @@ module.exports = {
     });
 
     console.log(
-      `Will create refund here for ${payment} for € ${refundAmount / 100}`
+      `Will create refund here for ${payment.id} for € ${refundAmount / 100}`
     );
   },
 };
