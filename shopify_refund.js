@@ -5,7 +5,7 @@ module.exports = {
   description:
     "This action uses the Firmhouse API to refund a payment based on a cancelled or refunded Shopify order",
   key: "shopify_refund",
-  version: "0.0.20",
+  version: "0.0.24",
   type: "action",
   props: {
     body: {
@@ -18,14 +18,18 @@ module.exports = {
     },
   },
   async run() {
-    const firmhouseQuery = async (query) => {
-      return axios({
-        method: "POST",
-        url: `https://portal.firmhouse.com/graphql`,
-        headers: {
+    const firmhouseQuery = async (query, headers = {}) => {
+      headers = Object.assign(
+        {
           "Content-Type": "application/json",
           "X-Project-Access-Token": this.projectAccessToken,
         },
+        headers
+      );
+      return axios({
+        method: "POST",
+        url: `https://portal.firmhouse.com/graphql`,
+        headers: headers,
         data: JSON.stringify({ query: query }),
       });
     };
@@ -39,6 +43,7 @@ module.exports = {
             }
             subscription {
               id
+              token
               orderedProducts {
                 id
                 quantity
@@ -66,7 +71,7 @@ module.exports = {
 
     var refundAmount = 0;
 
-    this.body.refund_line_items.forEach((refundLineItem) => {
+    this.body.refund_line_items.forEach(async (refundLineItem) => {
       const orderedProduct = findOrderedProduct(
         `gid://shopify/ProductVariant/${refundLineItem.line_item.variant_id}`
       );
@@ -83,16 +88,97 @@ module.exports = {
       if (newQuantity > 0) {
         console.log(`Updating quantity for ${orderedProduct.id}`);
         console.log(`Set quantity ${newQuantity}`);
+
+        const orderedProductUpdate = await firmhouseQuery(
+          `mutation {
+            updateOrderedProduct(input: {
+              id: ${orderedProduct.id}
+              quantity: ${newQuantity}
+            }) {
+              orderedProduct {
+                id
+                quantity
+              }
+              errors {
+                attribute
+                message
+              }
+            }
+          }`
+        );
+
+        const orderedProductUpdateErrors =
+          orderedProductUpdate.data.data.updateOrderedProduct.errors;
+
+        if (orderedProductUpdateErrors) {
+          console.log(`Error ${orderedProductUpdateErrors}`);
+        } else {
+          console.log(
+            `Done! Updated ordered product #${orderedProductUpdate.id} to quantity ${newQuantity}`
+          );
+        }
       } else {
         console.log(`Removing ordered product ${orderedProduct.id}`);
+        const orderedProductDestroy = await firmhouseQuery(
+          `
+        mutation {
+          destroyOrderedProduct(input: { id: ${orderedProduct.id} }) {
+            subscription {
+              token
+            }
+          }
+        }
+        `,
+          { "X-Subscription-Token": order.subscription.token }
+        );
+        console.log(`Removed ordered product ${orderedProduct.id}`);
+        console.log(orderedProductDestroy);
       }
 
       refundAmount +=
         orderedProduct.priceIncludingTaxCents * refundLineItem.quantity;
     });
 
+    refundAmount = refundAmount / 100;
+
     console.log(
-      `Will create refund here for ${payment.id} for € ${refundAmount / 100}`
+      `Will create refund here for ${payment.id} for € ${refundAmount}`
     );
+
+    const refund = await firmhouseQuery(
+      `mutation {
+        refundPayment(input: {
+          id: ${payment.id},
+          amount: ${refundAmount}
+        }) {
+          payment {
+            token
+            status
+          }
+          refund {
+            id
+            status
+          }
+          errors {
+            path
+            message
+            attribute
+          }
+        }
+      }`
+    );
+
+    const refundErrors = refund.data.data.refundPayment.errors;
+
+    if (refundErrors) {
+      console.log(`
+        Error: ${refundErrors}
+      `);
+      return;
+    } else {
+      console.log(`
+        Refund created for ${payment.id}
+      `);
+    }
   },
 };
