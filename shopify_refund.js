@@ -5,7 +5,7 @@ module.exports = {
   description:
     "This action uses the Firmhouse API to refund a payment based on a cancelled or refunded Shopify order",
   key: "shopify_refund",
-  version: "0.0.38",
+  version: "0.0.46",
   type: "action",
   props: {
     body: {
@@ -18,62 +18,34 @@ module.exports = {
     },
   },
   async run() {
-    const firmhouseQuery = async (query, headers = {}) => {
-      headers = Object.assign(
-        {
-          "Content-Type": "application/json",
-          "X-Project-Access-Token": this.projectAccessToken,
-        },
-        headers
-      );
-      return axios({
-        method: "POST",
-        url: `https://portal.firmhouse.com/graphql`,
-        headers: headers,
-        data: JSON.stringify({ query: query }),
-      });
-    };
+    const shopifyRefund = new ShopifyRefund(this.projectAccessToken, this.body);
+    await shopifyRefund.perform();
+  },
+};
 
-    const firmhouseOrder = await firmhouseQuery(`
-        query {
-          getOrderBy(shopifyId: "gid://shopify/Order/${this.body.order_id}") {
-            id
-            payment {
-              id
-              token
-            }
-            subscription {
-              id
-              token
-              orderedProducts {
-                id
-                quantity
-                priceIncludingTaxCents
-                product {
-                  shopifyVariantId
-                }
-              }
-            }
-          }
-        }
-    `);
+class ShopifyRefund {
+  constructor(projectAccessToken, body) {
+    this.projectAccessToken = projectAccessToken;
+    this.body = body;
+  }
 
-    const order = firmhouseOrder.data.data.getOrderBy;
-    if (!order) return "No order found for incoming message.";
+  async perform() {
+    await this.ensureOrder();
 
-    const payment = order.payment;
-    if (!payment) return "No payment found to make the refund on.";
+    if (!this.firmhouseOrder) return "No order found for incoming message.";
 
-    const findOrderedProduct = (shopifyVariantId) => {
-      return order.subscription.orderedProducts.find(
-        (o) => o.product.shopifyVariantId == shopifyVariantId
-      );
-    };
+    this.subscriptionToken = this.firmhouseOrder.subscription.token;
+    this.firmhousePayment = this.firmhouseOrder.payment;
 
-    var refundAmount = 0;
+    if (!this.firmhousePayment) return "No payment found to refund.";
 
+    await this.updateOrderedProducts();
+    await this.performRefund();
+  }
+
+  async updateOrderedProducts() {
     for (const refundLineItem of this.body.refund_line_items) {
-      const orderedProduct = findOrderedProduct(
+      const orderedProduct = this.findOrderedProduct(
         `gid://shopify/ProductVariant/${refundLineItem.line_item.variant_id}`
       );
 
@@ -90,7 +62,7 @@ module.exports = {
         console.log(`Updating quantity for ${orderedProduct.id}`);
         console.log(`Set quantity ${newQuantity}`);
 
-        const orderedProductUpdate = await firmhouseQuery(
+        const orderedProductUpdate = await this.firmhouseQuery(
           `mutation {
           updateOrderedProduct(input: {
             id: ${orderedProduct.id}
@@ -105,8 +77,7 @@ module.exports = {
               message
             }
           }
-        }`,
-          { "X-Subscription-Token": order.subscription.token }
+        }`
         );
 
         const orderedProductUpdateErrors = orderedProductUpdate.data.errors;
@@ -116,12 +87,12 @@ module.exports = {
           return;
         } else {
           console.log(
-            `Done! Updated ordered product #${orderedProductUpdate.id} to quantity ${newQuantity}`
+            `Updated ordered product #${orderedProductUpdate.id} to quantity ${newQuantity}`
           );
         }
       } else {
         console.log(`Removing ordered product ${orderedProduct.id}`);
-        const orderedProductDestroy = await firmhouseQuery(
+        const orderedProductDestroy = await this.firmhouseQuery(
           `
       mutation {
         destroyOrderedProduct(input: { id: ${orderedProduct.id} }) {
@@ -130,32 +101,24 @@ module.exports = {
           }
         }
       }
-      `,
-          { "X-Subscription-Token": order.subscription.token }
+      `
         );
         console.log(`Removed ordered product ${orderedProduct.id}`);
         console.log(orderedProductDestroy);
       }
-
-      console.log(
-        `incrementing refundAmount with ${orderedProduct.priceIncludingTaxCents} * ${refundLineItem.quantity}`
-      );
-
-      refundAmount +=
-        orderedProduct.priceIncludingTaxCents * refundLineItem.quantity;
     }
+  }
 
-    refundAmount = refundAmount.toFixed(2) / 100;
-
+  async performRefund() {
     console.log(
-      `Will create refund here for ${payment.id} for € ${refundAmount}`
+      `Will create refund here for ${this.firmhousePayment.id} for € ${this.refundAmount}`
     );
 
-    const refund = await firmhouseQuery(
+    const refund = await this.firmhouseQuery(
       `mutation {
         refundPayment(input: {
-          id: ${payment.id}
-          amount: ${refundAmount}
+          id: ${this.firmhousePayment.id}
+          amount: ${this.refundAmount}
           reason: "Product refunded in Shopify."
         }) {
           payment {
@@ -184,8 +147,80 @@ module.exports = {
       return;
     } else {
       console.log(`
-        Refund created for ${payment.id}
+        Refund created for ${this.firmhousePayment.id}
       `);
     }
-  },
-};
+  }
+
+  async ensureOrder() {
+    const firmhouseOrderQuery = await this.firmhouseQuery(`
+        query {
+          getOrderBy(shopifyId: "gid://shopify/Order/${this.body.order_id}") {
+            id
+            payment {
+              id
+              token
+            }
+            subscription {
+              id
+              token
+              orderedProducts {
+                id
+                quantity
+                priceIncludingTaxCents
+                product {
+                  shopifyVariantId
+                }
+              }
+            }
+          }
+        }
+    `);
+
+    this.firmhouseOrder = firmhouseOrderQuery.data.data.getOrderBy;
+  }
+
+  findOrderedProduct(shopifyVariantId) {
+    return this.firmhouseOrder.subscription.orderedProducts.find(
+      (o) => o.product.shopifyVariantId == shopifyVariantId
+    );
+  }
+
+  async firmhouseQuery(query) {
+    const headers = { "Content-Type": "application/json" };
+    if (this.projectAccessToken) {
+      headers["X-Project-Access-Token"] = this.projectAccessToken;
+    }
+    if (this.subscriptionToken) {
+      headers["X-Subscription-Token"] = this.subscriptionToken;
+    }
+
+    return axios({
+      method: "POST",
+      url: `https://portal.firmhouse.com/graphql`,
+      headers: headers,
+      data: JSON.stringify({ query: query }),
+    });
+  }
+
+  get refundAmount() {
+    let refundAmount = 0;
+
+    for (const refundLineItem of this.body.refund_line_items) {
+      const orderedProduct = this.findOrderedProduct(
+        `gid://shopify/ProductVariant/${refundLineItem.line_item.variant_id}`
+      );
+
+      if (!orderedProduct) {
+        console.log(
+          `Ordered product not found for ${refundLineItem.line_item.variant_id}`
+        );
+      }
+
+      refundAmount +=
+        orderedProduct.priceIncludingTaxCents * refundLineItem.quantity;
+    }
+
+    return refundAmount.toFixed(2) / 100;
+  }
+}
