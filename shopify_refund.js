@@ -5,7 +5,7 @@ module.exports = {
   description:
     "This action uses the Firmhouse API to refund a payment based on a cancelled or refunded Shopify order",
   key: "shopify_refund",
-  version: "0.0.24",
+  version: "0.0.38",
   type: "action",
   props: {
     body: {
@@ -39,6 +39,7 @@ module.exports = {
           getOrderBy(shopifyId: "gid://shopify/Order/${this.body.order_id}") {
             id
             payment {
+              id
               token
             }
             subscription {
@@ -71,7 +72,7 @@ module.exports = {
 
     var refundAmount = 0;
 
-    this.body.refund_line_items.forEach(async (refundLineItem) => {
+    for (const refundLineItem of this.body.refund_line_items) {
       const orderedProduct = findOrderedProduct(
         `gid://shopify/ProductVariant/${refundLineItem.line_item.variant_id}`
       );
@@ -91,27 +92,28 @@ module.exports = {
 
         const orderedProductUpdate = await firmhouseQuery(
           `mutation {
-            updateOrderedProduct(input: {
-              id: ${orderedProduct.id}
-              quantity: ${newQuantity}
-            }) {
-              orderedProduct {
-                id
-                quantity
-              }
-              errors {
-                attribute
-                message
-              }
+          updateOrderedProduct(input: {
+            id: ${orderedProduct.id}
+            quantity: ${newQuantity}
+          }) {
+            orderedProduct {
+              id
+              quantity
             }
-          }`
+            errors {
+              attribute
+              message
+            }
+          }
+        }`,
+          { "X-Subscription-Token": order.subscription.token }
         );
 
-        const orderedProductUpdateErrors =
-          orderedProductUpdate.data.data.updateOrderedProduct.errors;
+        const orderedProductUpdateErrors = orderedProductUpdate.data.errors;
 
         if (orderedProductUpdateErrors) {
-          console.log(`Error ${orderedProductUpdateErrors}`);
+          console.log(`Error ${JSON.stringify(orderedProductUpdateErrors)}`);
+          return;
         } else {
           console.log(
             `Done! Updated ordered product #${orderedProductUpdate.id} to quantity ${newQuantity}`
@@ -121,25 +123,29 @@ module.exports = {
         console.log(`Removing ordered product ${orderedProduct.id}`);
         const orderedProductDestroy = await firmhouseQuery(
           `
-        mutation {
-          destroyOrderedProduct(input: { id: ${orderedProduct.id} }) {
-            subscription {
-              token
-            }
+      mutation {
+        destroyOrderedProduct(input: { id: ${orderedProduct.id} }) {
+          subscription {
+            token
           }
         }
-        `,
+      }
+      `,
           { "X-Subscription-Token": order.subscription.token }
         );
         console.log(`Removed ordered product ${orderedProduct.id}`);
         console.log(orderedProductDestroy);
       }
 
+      console.log(
+        `incrementing refundAmount with ${orderedProduct.priceIncludingTaxCents} * ${refundLineItem.quantity}`
+      );
+
       refundAmount +=
         orderedProduct.priceIncludingTaxCents * refundLineItem.quantity;
-    });
+    }
 
-    refundAmount = refundAmount / 100;
+    refundAmount = refundAmount.toFixed(2) / 100;
 
     console.log(
       `Will create refund here for ${payment.id} for € ${refundAmount}`
@@ -148,8 +154,9 @@ module.exports = {
     const refund = await firmhouseQuery(
       `mutation {
         refundPayment(input: {
-          id: ${payment.id},
+          id: ${payment.id}
           amount: ${refundAmount}
+          reason: "Product refunded in Shopify."
         }) {
           payment {
             token
@@ -168,11 +175,11 @@ module.exports = {
       }`
     );
 
-    const refundErrors = refund.data.data.refundPayment.errors;
+    const refundErrors = refund.data.errors;
 
     if (refundErrors) {
       console.log(`
-        Error: ${refundErrors}
+        Error: ${JSON.stringify(refundErrors)}
       `);
       return;
     } else {
