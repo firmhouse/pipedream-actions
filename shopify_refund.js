@@ -5,7 +5,7 @@ module.exports = {
   description:
     "This action uses the Firmhouse API to refund a payment based on a cancelled or refunded Shopify order",
   key: "shopify_refund",
-  version: "0.0.47",
+  version: "0.0.48",
   type: "action",
   props: {
     body: {
@@ -19,7 +19,7 @@ module.exports = {
   },
   async run() {
     const shopifyRefund = new ShopifyRefund(this.projectAccessToken, this.body);
-    await shopifyRefund.perform();
+    return await shopifyRefund.perform();
   },
 };
 
