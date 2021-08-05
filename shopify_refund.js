@@ -19,7 +19,7 @@ module.exports = {
   },
   async run() {
     const shopifyRefund = new ShopifyRefund(this.projectAccessToken, this.body);
-    await shopifyRefund.perform();
+    return await shopifyRefund.perform();
   },
 };
 
