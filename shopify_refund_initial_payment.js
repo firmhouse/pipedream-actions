@@ -5,7 +5,7 @@ module.exports = {
   description:
     "This action uses the Firmhouse API to (partially) refund an initial payment based on a refunded Shopify order",
   key: "shopify_refund_initial_payment",
-  version: "0.0.19",
+  version: "0.0.21",
   type: "action",
   props: {
     body: {
@@ -189,6 +189,7 @@ class ShopifyRefund {
             invoices {
               id
               invoiceLineItems {
+                lineItemType
                 effectiveAmountIncludingTaxCents
                 product {
                   shopifyVariantId
@@ -257,13 +258,31 @@ class ShopifyRefund {
         console.log(`invoiceLineItem not found for ${refundLineItem.line_item.variant_id}`);
       }
 
-      console.log("well?");
-      console.log(invoiceLineItem);
-      console.log(this.firmhouseInvoice);
-
       refundAmount += invoiceLineItem.effectiveAmountIncludingTaxCents * refundLineItem.quantity;
     }
 
+    refundAmount += this.shippingRefundAmount;
+
     return refundAmount.toFixed(2) / 100;
+  }
+
+  get shippingRefundAmount() {
+    let shippingRefundAmount = 0;
+
+    const shippingRefund = this.body.order_adjustments.find((oa) => oa.kind == "shipping_refund");
+
+    if (shippingRefund) {
+      const shippingLineItem = this.firmhouseInvoice.invoiceLineItems.find(
+        (invoiceLineItem) => invoiceLineItem.lineItemType == "SHIPPING"
+      );
+
+      if (shippingLineItem) {
+        shippingRefundAmount = shippingLineItem.effectiveAmountIncludingTaxCents;
+      } else {
+        console.log("Shipping refund detected but no line item found");
+      }
+    }
+
+    return shippingRefundAmount;
   }
 }
