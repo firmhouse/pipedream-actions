@@ -5,7 +5,7 @@ module.exports = {
   description:
     "This action uses the Firmhouse API to refund a payment based on a cancelled or refunded Shopify order",
   key: "shopify_refund",
-  version: "0.0.48",
+  version: "0.0.49",
   type: "action",
   props: {
     body: {
@@ -36,8 +36,10 @@ class ShopifyRefund {
 
     this.subscriptionToken = this.firmhouseOrder.subscription.token;
     this.firmhousePayment = this.firmhouseOrder.payment;
+    this.firmhouseInvoice = this.firmhouseOrder.invoice;
 
     if (!this.firmhousePayment) return "No payment found to refund.";
+    if (!this.firmhouseInvoice) return "No invoice found for order.";
 
     await this.updateOrderedProducts();
     await this.performRefund();
@@ -55,8 +57,7 @@ class ShopifyRefund {
         }
     `);
 
-    const orderedProducts =
-      firmhouseSubscriptionQuery.data.data.getSubscription.orderedProducts;
+    const orderedProducts = firmhouseSubscriptionQuery.data.data.getSubscription.orderedProducts;
 
     if (orderedProducts.length > 0) return;
 
@@ -83,9 +84,7 @@ class ShopifyRefund {
       );
 
       if (!orderedProduct) {
-        console.log(
-          `Ordered product not found for ${refundLineItem.line_item.variant_id}`
-        );
+        console.log(`Ordered product not found for ${refundLineItem.line_item.variant_id}`);
         return;
       }
 
@@ -119,9 +118,7 @@ class ShopifyRefund {
           console.log(`Error ${JSON.stringify(orderedProductUpdateErrors)}`);
           return;
         } else {
-          console.log(
-            `Updated ordered product #${orderedProductUpdate.id} to quantity ${newQuantity}`
-          );
+          console.log(`Updated ordered product #${orderedProductUpdate.id} to quantity ${newQuantity}`);
         }
       } else {
         console.log(`Removing ordered product ${orderedProduct.id}`);
@@ -143,9 +140,7 @@ class ShopifyRefund {
   }
 
   async performRefund() {
-    console.log(
-      `Will create refund here for ${this.firmhousePayment.id} for € ${this.refundAmount}`
-    );
+    console.log(`Will create refund here for ${this.firmhousePayment.id} for € ${this.refundAmount}`);
 
     const refund = await this.firmhouseQuery(
       `mutation {
@@ -194,16 +189,21 @@ class ShopifyRefund {
               id
               token
             }
+            invoice {
+              id
+              invoiceLineItems {
+                effectiveAmountIncludingTaxCents
+                product {
+                  shopifyVariantId
+                }
+              }
+            }
             subscription {
               id
               token
               orderedProducts {
                 id
                 quantity
-                priceIncludingTaxCents
-                product {
-                  shopifyVariantId
-                }
               }
             }
           }
@@ -213,9 +213,9 @@ class ShopifyRefund {
     this.firmhouseOrder = firmhouseOrderQuery.data.data.getOrderBy;
   }
 
-  findOrderedProduct(shopifyVariantId) {
-    return this.firmhouseOrder.subscription.orderedProducts.find(
-      (o) => o.product.shopifyVariantId == shopifyVariantId
+  findInvoiceLineItemForVariantId(shopifyVariantId) {
+    return this.firmhouseOrder.invoice.invoiceLineItems.find(
+      (invoiceLineItem) => invoiceLineItem.product.shopifyVariantId == shopifyVariantId
     );
   }
 
@@ -232,7 +232,9 @@ class ShopifyRefund {
       method: "POST",
       url: `https://portal.firmhouse.com/graphql`,
       headers: headers,
-      data: JSON.stringify({ query: query }),
+      data: {
+        query: query,
+      },
     });
   }
 
@@ -240,18 +242,15 @@ class ShopifyRefund {
     let refundAmount = 0;
 
     for (const refundLineItem of this.body.refund_line_items) {
-      const orderedProduct = this.findOrderedProduct(
+      const invoiceLineItem = this.findInvoiceLineItemForVariantId(
         `gid://shopify/ProductVariant/${refundLineItem.line_item.variant_id}`
       );
 
       if (!orderedProduct) {
-        console.log(
-          `Ordered product not found for ${refundLineItem.line_item.variant_id}`
-        );
+        console.log(`Ordered product not found for ${refundLineItem.line_item.variant_id}`);
       }
 
-      refundAmount +=
-        orderedProduct.priceIncludingTaxCents * refundLineItem.quantity;
+      refundAmount += invoiceLineItem.effectiveAmountIncludingTaxCents * refundLineItem.quantity;
     }
 
     return refundAmount.toFixed(2) / 100;
