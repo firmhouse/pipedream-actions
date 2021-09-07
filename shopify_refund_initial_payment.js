@@ -5,7 +5,7 @@ module.exports = {
   description:
     "This action uses the Firmhouse API to (partially) refund an initial payment based on a refunded Shopify order",
   key: "shopify_refund_initial_payment",
-  version: "0.0.21",
+  version: "0.0.22",
   type: "action",
   props: {
     body: {
@@ -227,7 +227,8 @@ class ShopifyRefund {
 
   findInvoiceLineItemForVariantId(shopifyVariantId) {
     return this.firmhouseInvoice.invoiceLineItems.find(
-      (invoiceLineItem) => invoiceLineItem.product.shopifyVariantId == shopifyVariantId
+      (invoiceLineItem) =>
+        invoiceLineItem.product && invoiceLineItem.product.shopifyVariantId == shopifyVariantId
     );
   }
 
