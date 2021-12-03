@@ -5,7 +5,7 @@ module.exports = {
   description:
     "This action uses the Firmhouse API to (partially) refund an initial payment based on a refunded Shopify order",
   key: "shopify_refund_initial_payment",
-  version: "0.0.22",
+  version: "0.0.26",
   type: "action",
   props: {
     body: {
@@ -48,32 +48,40 @@ class ShopifyRefund {
 
   async cancelSubscription() {
     const firmhouseSubscriptionQuery = await this.firmhouseQuery(`
-        query {
-          getSubscription(token: "${this.firmhouseSubscription.token}") {
-            orderedProducts {
-              id
-            }
+      query {
+        getSubscription(token: "${this.firmhouseSubscription.token}") {
+          orderedProducts {
+            id
+            title
           }
         }
+      }
     `);
 
     const orderedProducts = firmhouseSubscriptionQuery.data.data.getSubscription.orderedProducts;
 
-    if (orderedProducts.length > 0) return;
+    var activeProductCount = orderedProducts.length;
+
+    const isReturnProduct = (element) => element["title"] == "Option return old jeans";
+    if (orderedProducts.findIndex(isReturnProduct) >= 0) {
+      activeProductCount = activeProductCount - 1;
+    }
+
+    if (activeProductCount > 0) return;
 
     await this.firmhouseQuery(`
-        mutation {
-          cancelSubscription(
-            input: {
-              token: "${this.firmhouseSubscription.token}",
-              cancellationNotes: "Cancellation triggered by Shopify refund"
-            }
-          ) {
-            subscription {
-              status
-            }
+      mutation {
+        cancelSubscription(
+          input: {
+            token: "${this.firmhouseSubscription.token}",
+            cancellationNotes: "Cancellation triggered by Shopify refund"
+          }
+        ) {
+          subscription {
+            status
           }
         }
+      }
     `);
   }
 
