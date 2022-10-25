@@ -1,7 +1,8 @@
 export default {
   name: "Calculate the asset purchase price from a mapping between months and prices.",
+  description: "Fetches the purchase price from an asset based on the Prices Map input object. Returns the last value in the map if the count exceeds the number of items in the pricing maps",
   key: "calculate_asset_purchase_price_from_mapping",
-  version: "0.0.3",
+  version: "0.0.4",
   type: "action",
   props: {
     recurringInvoicesCount: {
