@@ -1,9 +1,9 @@
 export default {
-  name: "Calculate asset purchase price",
+  name: "Sample: Calculate asset purchase price",
   description:
-    "Sample to calculate an asset purchase price based on the number of recurring invoices charged so far.",
+    "Sample action to calculate an asset purchase price based on the number of recurring invoices charged so far.",
   key: "calculate_asset_purchase_price",
-  version: "0.0.6",
+  version: "0.0.7",
   type: "action",
   props: {
     recurringInvoicesCount: {
@@ -19,14 +19,14 @@ export default {
       3: 449
     }
 
-    var inMonth;
+    var inMonth
 
     if (this.recurringInvoicesCount > 3) { // Ensure that we never select a higher month than 3.
-      inMonth = 3;
+      inMonth = 3
     } else {
-      inMonth = this.recurringInvoicesCount;
+      inMonth = this.recurringInvoicesCount
     }
 
-    return pricesMap[inMonth] * 100;
+    $.export("purchasePriceCents", pricesMap[inMonth] * 100)
   },
 };
