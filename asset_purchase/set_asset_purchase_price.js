@@ -25,8 +25,6 @@ export default {
     }
   },
   async run({ $ }) {
-    console.log(this.purchasePriceCents, this.assetOwnershipId);
-
     const data = await axios(this, {
       method: "POST",
       url: this.firmhouseApiUrl,
