@@ -3,7 +3,7 @@ export default {
   description:
     "Sample action to calculate an asset purchase price based on the number of recurring invoices charged so far.",
   key: "calculate_asset_purchase_price",
-  version: "0.0.8",
+  version: "0.0.9",
   type: "action",
   props: {
     recurringInvoicesCount: {
