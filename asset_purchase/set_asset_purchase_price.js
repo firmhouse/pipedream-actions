@@ -5,7 +5,7 @@ export default {
   description:
     "Sets the purchase price for an asset by updating an asset ownership object.",
   key: "set_asset_purchase_price",
-  version: "0.0.4",
+  version: "0.0.5",
   type: "action",
   props: {
     firmhouseProjectAccessToken: {
