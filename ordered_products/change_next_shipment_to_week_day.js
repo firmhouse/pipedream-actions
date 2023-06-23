@@ -67,9 +67,9 @@ module.exports = {
       })
 
       if (response.status != 200) {
-        throw new Error(this.projectName + 'API call failed to update subscribed plans next billing date');
+        throw new Error(this.projectName + 'API call failed to update ordered product next shipment date');
       } else if (response.data.errors != null) {
-        throw new Error(this.projectName + 'API call failed to update subscribed plans next billing date');
+        throw new Error(this.projectName + 'API call failed to update ordered product next shipment date');
       }
     }
 
